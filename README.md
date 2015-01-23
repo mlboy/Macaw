@@ -55,6 +55,14 @@ Macaw::post('/', function() {
 
 Macaw::dispatch();
 ```
+Other way,such as:
+
+```PHP
+Macaw::get('/Home/index','home@index');
+
+Macaw::get('/Home/index','home@index','Namespace');
+```
+
 
 Lastly, if there is no route defined for a certain location, you can make Macaw run a custom callback, like:
 
