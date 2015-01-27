@@ -21,8 +21,6 @@ class Macaw
 
     public static $callbacks = array();
 
-    public static $namespaces = array();
-
     public static $patterns = array(
         ':any' => '[^/]+',
         ':num' => '[0-9]+',
@@ -30,6 +28,9 @@ class Macaw
     );
 
     public static $error_callback;
+
+    public static $filters =array();
+    public static $filters_callbacks =array();
 
     /**
      * Defines a route w/ callback and method
@@ -39,12 +40,10 @@ class Macaw
 
         $uri = $params[0];
         $callback = $params[1];
-	    $namespaces = $params[2];
 
         array_push(self::$routes, $uri);
         array_push(self::$methods, strtoupper($method));
         array_push(self::$callbacks, $callback);
-        array_push(self::$namespaces, $namespaces);
     }
 
     /**
@@ -58,6 +57,13 @@ class Macaw
     public static function haltOnMatch($flag = true)
     {
         self::$halts = $flag;
+    }
+
+    public static function filter($filter,$callback){
+        self::$filters[$filter][] = $callback;
+    }
+    public static function when($uri,$filter){
+        self::$filters_callbacks[$uri] = &self::$filters[$filter];
     }
 
     /**
@@ -75,6 +81,19 @@ class Macaw
 
         // check if route is defined without regex
         if (in_array($uri, self::$routes)) {
+            foreach(self::$filters_callbacks as $filter => $callbacks){
+                if (strpos($uri,$filter)!==false){
+                    foreach($callbacks as $callback){
+                        if(!is_object($callback)){
+                            $segments = explode('@',$callback);
+                            $controller = new $segments[0]();
+                            $controller->$segments[1];
+                        }else{
+                            call_user_func($callback);
+                        }
+                    }
+                }
+            }
             $route_pos = array_keys(self::$routes, $uri);
             foreach ($route_pos as $route) {
 
@@ -83,9 +102,19 @@ class Macaw
 
                     //if route is not an object
                     if(!is_object(self::$callbacks[$route])){
-
+                        $namespace = '';
+                        if(is_array(self::$callbacks[$route])){
+                            $callback = self::$callbacks[$route]['uses'];
+                            //use namespace
+                            if (isset(self::$callbacks[$route]['namespace'])) {
+                                //use self::$callbacks[$route]['namespace'];
+                                $namespace = trim(self::$callbacks[$route]['namespace'],'\\').'\\';
+                            }
+                        }else{
+                            $callback = self::$callbacks[$route];
+                        }
                         //grab all parts based on a / separator
-                        $parts = explode('/',self::$callbacks[$route]);
+                        $parts = explode('/',$callback);
 
                         //collect the last index of the array
                         $last = end($parts);
@@ -93,14 +122,9 @@ class Macaw
                         //grab the controller name and method call
                         $segments = explode('@',$last);
 
-                        //use namespace
-                        if (self::$namespaces[$route]) {
-                            use self::$namespaces[$route];
-                            echo self::$namespachs[$route];
-                        }
-
                         //instanitate controller
-                        $controller = new $segments[0]();
+                        $class = $namespace.$segments[0];
+                        $controller = new $class();
 
                         //call method
                         $controller->$segments[1]();
