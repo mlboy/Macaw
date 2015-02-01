@@ -16,8 +16,9 @@ class Macaw
     public static $halts = false;
 
     public static $routes = array();
+    //public static $routes = array();
 
-    public static $methods = array();
+    //public static $methods = array();
 
     public static $callbacks = array();
 
@@ -37,12 +38,13 @@ class Macaw
      */
     public static function __callstatic($method, $params)
     {
-
         $uri = $params[0];
         $callback = $params[1];
 
-        array_push(self::$routes, $uri);
-        array_push(self::$methods, strtoupper($method));
+        self::$routes[strtoupper($method)][$uri] = $callback;
+        //array_push(self::$routes, $uri);
+        //array_push(self::$methods, strtoupper($method));
+
         array_push(self::$callbacks, $callback);
     }
 
@@ -62,8 +64,10 @@ class Macaw
     public static function filter($filter,$callback){
         self::$filters[$filter][] = $callback;
     }
-    public static function when($uri,$filter){
-        self::$filters_callbacks[$uri] = &self::$filters[$filter];
+    public static function when($uri,$filter,$when = 'before'){
+        foreach(self::$filters[$filter] as $k=>$v){
+            self::$filters_callbacks[$when][$uri][] = &self::$filters[$filter][$k];
+        }
     }
 
     /**
@@ -78,40 +82,38 @@ class Macaw
         $replaces = array_values(static::$patterns);
 
         $found_route = false;
-
-        // check if route is defined without regex
-        if (in_array($uri, self::$routes)) {
-            foreach(self::$filters_callbacks as $filter => $callbacks){
-                if (strpos($uri,$filter)!==false){
-                    foreach($callbacks as $callback){
-                        if(!is_object($callback)){
-                            $segments = explode('@',$callback);
-                            $controller = new $segments[0]();
-                            $controller->$segments[1];
-                        }else{
-                            call_user_func($callback);
-                        }
+        foreach(self::$filters_callbacks['before'] as $filter => $callbacks){
+            //echo $uri.'---'.$filter.'==='.strpos($uri,$filter).'---';
+            if (strpos($uri,$filter)!==false){
+                foreach($callbacks as $callback){
+                    if(!is_object($callback)){
+                        $segments = explode('@',$callback);
+                        $controller = new $segments[0]();
+                        self::$halts = $controller->$segments[1];
+                        if (self::$halts) return;
+                    }else{
+                        self::$halts = call_user_func($callback);
+                        if (self::$halts) return;
                     }
                 }
             }
-            $route_pos = array_keys(self::$routes, $uri);
-            foreach ($route_pos as $route) {
-
-                if (self::$methods[$route] == $method) {
+        }
+       // echo $uri;
+        // check if route is defined without regex
+        if (isset(self::$routes[$method][$uri])) {
                     $found_route = true;
 
                     //if route is not an object
-                    if(!is_object(self::$callbacks[$route])){
+                    if(!is_object(self::$routes[$method][$uri])){
                         $namespace = '';
-                        if(is_array(self::$callbacks[$route])){
-                            $callback = self::$callbacks[$route]['uses'];
+                        if(is_array(self::$routes[$method][$uri])){
+                            $callback = self::$routes[$method][$uri]['uses'];
                             //use namespace
-                            if (isset(self::$callbacks[$route]['namespace'])) {
-                                //use self::$callbacks[$route]['namespace'];
-                                $namespace = trim(self::$callbacks[$route]['namespace'],'\\').'\\';
+                            if (isset(self::$routes[$method][$uri]['namespace'])) {
+                                $namespace = trim(self::$routes[$method][$uri]['namespace'],'\\').'\\';
                             }
                         }else{
-                            $callback = self::$callbacks[$route];
+                            $callback = self::$routes[$method][$uri];
                         }
                         //grab all parts based on a / separator
                         $parts = explode('/',$callback);
@@ -133,32 +135,38 @@ class Macaw
 
                     } else {
                         //call closure
-                        call_user_func(self::$callbacks[$route]);
+                        call_user_func(self::$routes[$method][$uri]);
 
                         if (self::$halts) return;
                     }
-                }
-            }
         } else {
             // check if defined with regex
             $pos = 0;
-            foreach (self::$routes as $route) {
+            if(isset(self::$routes[$method])){
 
-                if (strpos($route, ':') !== false) {
-                    $route = str_replace($searches, $replaces, $route);
-                }
+                foreach (self::$routes[$method] as $route =>$callback) {
 
-                if (preg_match('#^' . $route . '$#', $uri, $matched)) {
-                    if (self::$methods[$pos] == $method) {
+                    if (strpos($route, ':') !== false) {
+                        $route = str_replace($searches, $replaces, $route);
+                    }
+
+                    if (preg_match('#^' . $route . '$#', $uri, $matched)) {
                         $found_route = true;
 
                         array_shift($matched); //remove $matched[0] as [1] is the first parameter.
 
 
-                        if(!is_object(self::$callbacks[$pos])){
-
+                        if(!is_object($callback)){
+                            $namespace = '';
+                            if(is_array($callback)){
+                                $callback = $callback['uses'];
+                                //use namespace
+                                if (isset($callback['namespace'])) {
+                                    $namespace = trim($callback['namespace'],'\\').'\\';
+                                }
+                            }
                             //grab all parts based on a / separator
-                            $parts = explode('/',self::$callbacks[$pos]);
+                            $parts = explode('/',$callback);
 
                             //collect the last index of the array
                             $last = end($parts);
@@ -174,14 +182,12 @@ class Macaw
 
                             if (self::$halts) return;
                         } else {
-                            call_user_func_array(self::$callbacks[$pos], $matched);
+                            call_user_func_array($callback, $matched);
 
                             if (self::$halts) return;
                         }
-
                     }
                 }
-            $pos++;
             }
         }
 
@@ -191,10 +197,25 @@ class Macaw
             if (!self::$error_callback) {
                 self::$error_callback = function() {
                     header($_SERVER['SERVER_PROTOCOL']." 404 Not Found");
-                    echo '404';
+                    die('404');
                 };
             }
             call_user_func(self::$error_callback);
+        }
+        foreach(self::$filters_callbacks['after'] as $filter => $callbacks){
+            if (strpos($uri,$filter)!==false){
+                foreach($callbacks as $callback){
+                    if(!is_object($callback)){
+                        $segments = explode('@',$callback);
+                        $controller = new $segments[0]();
+                        $controller->$segments[1];
+                        if (self::$halts) return;
+                    }else{
+                        self::$halts = call_user_func($callback);
+                        if (self::$halts) return;
+                    }
+                }
+            }
         }
     }
 }
