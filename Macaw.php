@@ -32,7 +32,10 @@ class Macaw
     public static $error_callback;
 
     public static $filters =array();
-    public static $filters_callbacks =array();
+    public static $filters_callbacks = array(
+        'before'=>array(),
+        'after' =>array(),
+    );
 
     /**
      * Defines a route w/ callback and method
