@@ -25,6 +25,7 @@ class Macaw
     public static $patterns = array(
         ':any' => '[^/]+',
         ':num' => '[0-9]+',
+        ':word' => '[a-zA-Z]+',
         ':all' => '.*'
     );
 
@@ -75,9 +76,11 @@ class Macaw
      */
     public static function dispatch()
     {
-        $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+        $uri = urldecode(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH));
+        if(isset($_REQUEST['HTTP_X_HTTP_METHOD_OVERRIDE'])){
+            $_SERVER['REQUEST_METHOD'] = strtoupper($_REQUEST['HTTP_X_HTTP_METHOD_OVERRIDE']);
+        }
         $method = $_SERVER['REQUEST_METHOD'];
-
         $searches = array_keys(static::$patterns);
         $replaces = array_values(static::$patterns);
 
@@ -98,7 +101,7 @@ class Macaw
                 }
             }
         }
-       // echo $uri;
+       //echo $uri;
         // check if route is defined without regex
         if (isset(self::$routes[$method][$uri])) {
                     $found_route = true;
