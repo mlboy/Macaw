@@ -184,7 +184,8 @@ class Macaw
                             $controller = new $segments[0]();
 
                             //call method and pass any extra parameters to the method
-                            $controller->$segments[1](implode(",", $matched));
+                            call_user_func_array(array($controller,$segments[1]),$matched);
+                            //$controller->$segments[1](implode(",", $matched));
 
                             if (self::$halts) return;
                         } else {
